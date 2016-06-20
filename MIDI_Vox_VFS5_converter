@@ -12,7 +12,7 @@
 *                                                                              *
 *  This program is will convert the 0-127 midi values from a VOX VFS5 foot     *
 *    controller plugged into a Yamaha S90-ES (or similar) into separate midi   *
-*    notes.  Intended for use with a sooperlooper.                             *
+*    notes.  Originally designed for use with a sooperlooper.                  *
 *                                                                              *
 *******************************************************************************/
 /*
@@ -32,7 +32,7 @@ Low  Hi    Action
 61  62    Gr1
 69  71    Rd1
 75  78    GrNone
-88  90    RdNone
+87  90    RdNone
 127  127    Unplug
 */
 
@@ -44,17 +44,24 @@ desc: MIDI Vox VSF5 Converter
 
 slider1:1<0,127,1>Green Ch1 pressed note
 slider2:2<0,127,1>Green Ch2 pressed note
-slider3:4<0,127,1>Green Ch3 pressed note
-slider4:8<0,127,1>Green Ch4 pressed note
+slider3:4<0,127,1>Green or Red Ch3 pressed note
+slider4:8<0,127,1>Green or Red Ch4 pressed note
 slider5:17<0,127,1>Red Ch1 pressed note
 slider6:18<0,127,1>Red Ch2 pressed note
-slider7:4<0,127,1>Red Ch3 pressed note (tied to Gr)
-slider8:8<0,127,1>Red Ch4 pressed note (tied to Gr)
+//slider8:8<0,127,1>Red Ch4 pressed note (tied to Gr)
+//slider7:4<0,127,1>Red Ch3 pressed note (tied to Gr)
 
-slider9:1<0,1,1{No, Yes} >Send NOTE OFF when released
+slider9:1<0,2,1{None, All, As set individually below}>Send NOTE OFF when released
 slider10:0<0,16,1>Output channel (0 passthrough)
 
 slider11:4<0,127,1{0 Bank Sel M,1 Mod Wheel M,2 Breath M,3,4 Foot P M,5 Porta M,6 Data Entry M,7 Vol M,8 Balance M,9,10 Pan M,11 Expression M,12 Ctrl 1 M,13 Ctrl 2 M,14,15,16 GP Slider 1,17 GP Slider 2,18 GP Slider 3,19 GP Slider 4,20,21,22,23,24,25,26,27,28,29,30,31,32 Bank Sel L,33 Mod Wheel L,34 Breath L,35,36 Foot P L,37 Porta L,38 Data Entry L,39 Vol L,40 Balance L,41,42 Pan L,43 Expression L,44 Ctrl 1 L,45 Ctrl 2 L,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64 Hold P sw,65 Porta sw,66 Sustenuto sw,67 Soft P sw,68 Legato P sw,69 Hold 2 P sw,70 S.Variation,71 S.Timbre,72 S.Release,73 S.Attack,74 S.Brightness,75 S.Ctrl 6,76 S.Ctrl 7,77 S.Ctrl 8,78 S.Ctrl 9,79 S.Ctrl 10,80 GP B.1 sw,81 GP B.2 sw,82 GP B.3 sw,83 GP B.4 sw,84,85,86,87,88,89,90,91 Effects Lv,92 Trem Lv,93 Chorus Lv,94 Celeste Lv,95 Phaser Lv,96 Data B. Inc,97 Data B. Dec,98 NRP L,99 NRP M,100 RP L,101 RP M,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127}>Controller Source
+
+slider21:1<0,1,1{No, Yes}>Green Ch1 send NOTE OFF
+slider22:1<0,1,1{No, Yes}>Green Ch2 send NOTE OFF
+slider23:1<0,1,1{No, Yes}>Green or Red Ch3 send NOTE OFF
+slider24:1<0,1,1{No, Yes}>Green or Red Ch4 send NOTE OFF
+slider25:1<0,1,1{No, Yes}>Red Ch1 send NOTE OFF
+slider26:1<0,1,1{No, Yes}>Red Ch2 send NOTE OFF
 
 //slider1:127<0,127,1>Green nothing pressed note
 //slider1:127<0,127,1>Red nothing pressed note
@@ -62,6 +69,12 @@ slider11:4<0,127,1{0 Bank Sel M,1 Mod Wheel M,2 Breath M,3,4 Foot P M,5 Porta M,
 
 @init
 ext_noinit = 1;
+
+// declare arrays - see http://forum.cockos.com/showthread.php?t=15833
+outnote = 0;
+sendIndvNoteOff = 6;
+
+@slider
 // lastaction: 0 nothing pressed; 1 .. 4 Green Ch1..2 or GrRd Ch3..4 pressed; 5 ...6 Red Ch 1..2 pressed  
 lastNote = -1;
 
@@ -69,28 +82,35 @@ lastNote = -1;
 MidiNoteOff = $x80;
 MidiNoteOn = $x90;
 
-@slider
 
 // Set variables
-slider7 = slider3;
-slider8 = slider4;
-outnoteG1 = slider1;
-outnoteG2 = slider2;
-outnoteG3 = slider3;
-outnoteG4 = slider4;
-outnoteR1 = slider5;
-outnoteR2 = slider6;
-outnoteR3 = slider7;
-outnoteR4 = slider8;
+outnote[0] = slider1; // G1
+outnote[1] = slider2; // G2
+outnote[2] = slider3; // GR3
+outnote[3] = slider4; // GR4
+outnote[4] = slider5; // R1
+outnote[5] = slider6; // R2
+
+
+//outnote[6] = slider7;
+//outnote[7] = slider8;
 sendNoteOff = slider9;
+sendIndvNoteOff[0] = slider21; // G1
+sendIndvNoteOff[1] = slider22; // G2
+sendIndvNoteOff[2] = slider23; // GR3
+sendIndvNoteOff[3] = slider24; // GR4
+sendIndvNoteOff[4] = slider25; // R1
+sendIndvNoteOff[5] = slider26; // R2
+
 outChannel = slider10;
 inCont = slider11;
+
+
 ////////////////////////////////////////////////////////////////////////////////////////////
 @block
 while
 (
   midirecv(offset, msg1, msg2, msg3) ? (
-    setNote = 0; // Reset note to send
     passthrough = 0; // Reset passthrough bit
     channel = msg1 & $x0F ; // Set the passthrough output channel
 
@@ -103,37 +123,31 @@ while
       // Test controller value
     
       // if unpressed (Gr or Rd) send note OFF for last note
-      (msg3 >= 75 && msg3 <= 78) || ( msg3 >= 88 && msg3 <= 90) ? (
+      (msg3 >= 75 && msg3 <= 78) || ( msg3 >= 87 && msg3 <= 90) ? (
         // test to see if last was a note and send note off
-        lastNote != -1 ? (
-          sendNoteOff == 1 ? midisend(offset, MidiNoteOff + channel, lastNote, 0);
-          lastNote = -1;
-        );
+        lastNote != -1 ? 
+          sendNoteOff == 1 || (sendNoteOff == 2 && sendIndvNoteOff[lastNote] == 1) ? 
+            midisend(offset, MidiNoteOff + channel, outnote[lastNote], 0);
+        lastNote = -1;
       ) : lastNote == -1 ? ( // only proceed to check for press if last detected was unpressed
         msg3 == 61 || msg3 == 62 ? ( // else if Gr1
-          setNote = outnoteG1; 
-          lastNote = outnoteG1;
+          lastNote = 0;
         ) : msg3 == 50 || msg3 == 51 ? ( // else if Gr2
-          setNote = outnoteG2; 
-          lastNote = outnoteG2;
+          lastNote = 1;
         ) : msg3 >= 33 && msg3 <= 36 ? ( // else if GrRd3
-          setNote = outnoteG3; 
-          lastNote = outnoteG3;
+          lastNote = 2;
         ) : msg3 >= 18 && msg3 <= 20 ? ( // else if GrRd4
-          setNote = outnoteG4; 
-          lastNote = outnoteG4;
+          lastNote = 3;
         ) : msg3 >= 69 && msg3 <= 71 ? ( // else if Rd1
-          setNote = outnoteR1; 
-          lastNote = outnoteR1;
+          lastNote = 4;
         ) : msg3 >= 55 && msg3 <= 57 ? ( // else if Rd2
-          setNote = outnoteR2; 
-          lastNote = outnoteR2;
+          lastNote = 5;
         ) : passthrough = 1; // else out of expected range (set passthrough bit for debugging)
       ) : passthrough = 1; // this captures double presses (modify later to use)
 
     ) : (
       // Not a desired control msg so passthrough as is
-      midisend(offset, msg1, msg2, msg3);
+      passthrough = 1;
     );
     
     // send passthrough or note msg
@@ -143,7 +157,7 @@ while
     ) : (
       // send new note if required
       lastNote != -1 ? (
-      midisend(offset, MidiNoteOn + channel, setNote, 127);
+      midisend(offset, MidiNoteOn + channel, outnote[lastNote], 127);
       ) 
       
     );
